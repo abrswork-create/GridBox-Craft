@@ -851,14 +851,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AdsManager
   showBannerOnStart: 1
   bannerPosition: 0
-  androidBannerAdUnitId: ca-app-pub-3940256099942544/6300978111
-  iosBannerAdUnitId: ca-app-pub-3940256099942544/2934735716
+  androidBannerAdUnitId: ca-app-pub-4592630080635142/5657078322
+  iosBannerAdUnitId: ca-app-pub-4592630080635142/5803136720
   autoReloadInterstitial: 1
-  androidInterstitialAdUnitId: ca-app-pub-3940256099942544/1033173712
-  iosInterstitialAdUnitId: ca-app-pub-3940256099942544/4411468910
+  androidInterstitialAdUnitId: ca-app-pub-4592630080635142/4343996659
+  iosInterstitialAdUnitId: ca-app-pub-4592630080635142/2353267292
   autoReloadRewarded: 1
-  androidRewardedAdUnitId: ca-app-pub-3940256099942544/5224354917
-  iosRewardedAdUnitId: ca-app-pub-3940256099942544/1712485313
+  androidRewardedAdUnitId: ca-app-pub-4592630080635142/1611031268
+  iosRewardedAdUnitId: ca-app-pub-4592630080635142/5797688283
   onRewardEarned:
     m_PersistentCalls:
       m_Calls: []
