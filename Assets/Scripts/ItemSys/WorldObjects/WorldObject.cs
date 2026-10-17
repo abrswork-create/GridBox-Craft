@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System;
@@ -16,7 +16,18 @@ public class WorldObject : MonoBehaviour
     {
         if (!isInitialized)
         {
-            throw new Exception("WorldItem must be initialized.");
+            if (itemStack != null && itemStack.item != null)
+            {
+                Initialize(transform.position, transform.rotation, transform.localScale, itemStack);
+                if (TerrainManager.Main != null)
+                {
+                    TerrainManager.Main.AddItem(transform.position, this);
+                }
+            }
+            else
+            {
+                throw new Exception($"WorldObject '{gameObject.name}' must be initialized with an ItemStack before Start, or have an ItemStack configured in the Inspector.");
+            }
         }
 
         //transform = base.transform;

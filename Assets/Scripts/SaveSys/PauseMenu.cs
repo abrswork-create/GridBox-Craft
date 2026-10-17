@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -6,7 +6,7 @@ public class PauseMenu : MonoBehaviour
 {
     bool isVisible = false;
 
-    public GameObject pausePanel;
+    public GameObject pausePanel, bg;
     public GameObject HUDCenter;
     public GameObject[] otherPanels;
 
@@ -30,6 +30,7 @@ public class PauseMenu : MonoBehaviour
     public void Show()
     {
         pausePanel.SetActive(true);
+        bg.SetActive(true);
         HUDCenter.SetActive(false);
         foreach (GameObject panel in otherPanels)
         {
@@ -42,6 +43,7 @@ public class PauseMenu : MonoBehaviour
     public void Hide()
     {
         pausePanel.SetActive(false);
+        bg.SetActive(false);
         HUDCenter.SetActive(true);
         foreach (GameObject panel in otherPanels)
         {

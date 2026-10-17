@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.UI;
@@ -55,6 +55,9 @@ public class ContainerManager : Singleton<ContainerManager>
         RefreshInventory(); // FreshPrince™
     }
 
+    [Tooltip("If true, clicking mouse 0 uses the active hotbar item. Leave false for mobile.")]
+    [SerializeField] private bool allowMouseItemUse = false;
+
     bool isVisible = false;
     private void Update()
     {
@@ -67,7 +70,7 @@ public class ContainerManager : Singleton<ContainerManager>
                 Show();
         }
         CheckChangeSelection();
-        if (Input.GetKeyDown(KeyCode.Mouse0) && !GameController.IsPaused)
+        if (allowMouseItemUse && Input.GetKeyDown(KeyCode.Mouse0) && !GameController.IsPaused)
         {
             UseHotbarItem(selectedHotbarSlotIndex);
         }
@@ -84,9 +87,40 @@ public class ContainerManager : Singleton<ContainerManager>
         }
     }
 
+    public int SelectedHotbarSlotIndex => selectedHotbarSlotIndex;
+
+    public void SelectHotbarSlot(int index)
+    {
+        if (index >= 0 && index < hotbarSlotIDs.Length)
+        {
+            selectedHotbarSlotIndex = index;
+            if (selectionIndicatorUI != null)
+            {
+                selectionIndicatorUI.anchoredPosition = new Vector3(15f + selectedHotbarSlotIndex * 17f, .25f, 0f);
+            }
+        }
+    }
+
+    public void SelectHotbarSlotByID(string slotID)
+    {
+        for (int i = 0; i < hotbarSlotIDs.Length; i++)
+        {
+            if (hotbarSlotIDs[i] == slotID)
+            {
+                SelectHotbarSlot(i);
+                break;
+            }
+        }
+    }
+
     public void UseHotbarItem(int slotIndex)
     {
         UseItem(hotbarSlotIDs[slotIndex]);
+    }
+
+    public void UseSelectedHotbarItem()
+    {
+        UseHotbarItem(selectedHotbarSlotIndex);
     }
 
     public void UseItem(string slotID)
@@ -125,6 +159,13 @@ public class ContainerManager : Singleton<ContainerManager>
 
     public void PickSlot(ItemSlot itemSlot, bool rightButton = false)
     {
+        // When inventory window is closed, clicking a hotbar slot selects it
+        if (!isVisible && itemSlot != null && itemSlot.ID.StartsWith("H"))
+        {
+            SelectHotbarSlotByID(itemSlot.ID);
+            return;
+        }
+
         ItemStack handStack;
         ItemStack slotStack;
 

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -83,18 +83,27 @@ public partial class TerrainManager : Singleton<TerrainManager>
     public void AddItem(Vector3 worldPosition, WorldObject worldItem)
     {
         Vector3Int chunkPosition = VoxelUtil.WorldToChunk(worldPosition, Consts.ChunkSize);
-        chunks[chunkPosition].AddItem(worldItem);
+        if (chunks.TryGetValue(chunkPosition, out Chunk chunk))
+        {
+            chunk.AddItem(worldItem);
+        }
     }
 
     public void RemoveItem(WorldObject worldItem)
     {
         Vector3Int chunkPosition = VoxelUtil.WorldToChunk(worldItem.transform.position, Consts.ChunkSize);
-        chunks[chunkPosition].RemoveItem(worldItem);
+        if (chunks.TryGetValue(chunkPosition, out Chunk chunk))
+        {
+            chunk.RemoveItem(worldItem);
+        }
     }
 
     public void DestroyChunkItems(Vector3Int chunkPosition)
     {
-        chunks[chunkPosition].DestroyAllItems();
+        if (chunks.TryGetValue(chunkPosition, out Chunk chunk))
+        {
+            chunk.DestroyAllItems();
+        }
     }
 
     #endregion

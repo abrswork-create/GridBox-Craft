@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 // FPSWalkerEnhanced
 // From Unify Community Wiki
@@ -82,6 +82,13 @@ public class PlayerController : MonoBehaviour
     private bool m_PlayerControl = false;
     private int m_JumpTimer;
 
+    [Header("Mobile Controls")]
+    [SerializeField] private Joystick m_Joystick;
+    private bool m_MobileJumpHeld;
+    private bool m_MobileJumpTriggered;
+    private float m_MobileJumpBufferTime;
+    private bool m_MobileRunActive;
+
 
     private void Awake()
     {
@@ -94,6 +101,11 @@ public class PlayerController : MonoBehaviour
         m_RayDistance = m_Controller.height * .5f + m_Controller.radius;
         m_SlideLimit = m_Controller.slopeLimit - .1f;
         m_JumpTimer = m_AntiBunnyHopFactor;
+
+        if (m_Joystick == null)
+        {
+            m_Joystick = FindAnyObjectByType<Joystick>();
+        }
     }
 
 
@@ -104,6 +116,14 @@ public class PlayerController : MonoBehaviour
 
         float inputX = Input.GetAxis("Horizontal");
         float inputY = Input.GetAxis("Vertical");
+
+        if (m_Joystick != null)
+        {
+            if (Mathf.Abs(m_Joystick.Horizontal) > Mathf.Abs(inputX))
+                inputX = m_Joystick.Horizontal;
+            if (Mathf.Abs(m_Joystick.Vertical) > Mathf.Abs(inputY))
+                inputY = m_Joystick.Vertical;
+        }
 
         if (m_ToggleRun && m_Grounded && Input.GetButtonDown("Run"))
         {
@@ -149,7 +169,8 @@ public class PlayerController : MonoBehaviour
             // If running isn't on a toggle, then use the appropriate speed depending on whether the run button is down
             if (!m_ToggleRun)
             {
-                m_Speed = Input.GetKey(KeyCode.LeftShift) ? m_RunSpeed : m_WalkSpeed;
+                bool runActive = Input.GetKey(KeyCode.LeftShift) || m_MobileRunActive;
+                m_Speed = runActive ? m_RunSpeed : m_WalkSpeed;
             }
 
             // If sliding (and it's allowed), or if we're on an object tagged "Slide", get a vector pointing down the slope we're on
@@ -169,15 +190,29 @@ public class PlayerController : MonoBehaviour
                 m_PlayerControl = true;
             }
 
-            // Jump! But only if the jump button has been released and player has been grounded for a given number of frames
-            if (!Input.GetButton("Jump"))
-            {
-                m_JumpTimer++;
-            }
-            else if (m_JumpTimer >= m_AntiBunnyHopFactor)
+            // Jump! Direct mobile button click or held jump input
+            bool hasBufferedJump = m_MobileJumpTriggered && (Time.time <= m_MobileJumpBufferTime);
+            if (hasBufferedJump)
             {
                 m_MoveDirection.y = m_JumpSpeed;
                 m_JumpTimer = 0;
+                m_MobileJumpTriggered = false;
+                m_MobileJumpHeld = false;
+            }
+            else
+            {
+                m_MobileJumpTriggered = false;
+                bool jumpHeld = Input.GetButton("Jump") || m_MobileJumpHeld;
+                if (!jumpHeld)
+                {
+                    m_JumpTimer++;
+                }
+                else if (m_JumpTimer >= m_AntiBunnyHopFactor)
+                {
+                    m_MoveDirection.y = m_JumpSpeed;
+                    m_JumpTimer = 0;
+                    m_MobileJumpHeld = false;
+                }
             }
         }
         else
@@ -247,6 +282,47 @@ public class PlayerController : MonoBehaviour
         m_Transform.position = new Vector3(data.position[0], data.position[1], data.position[2]);
         m_Transform.rotation = Quaternion.Euler(data.rotation[0], data.rotation[1], data.rotation[2]);
         m_Transform.localScale = new Vector3(data.scale[0], data.scale[1], data.scale[2]);
+    }
+
+    #endregion
+
+    #region Mobile UI Callbacks
+
+    public void SetMobileJump(bool held)
+    {
+        m_MobileJumpHeld = held;
+        if (held)
+        {
+            m_MobileJumpTriggered = true;
+            m_MobileJumpBufferTime = Time.time + 0.3f;
+        }
+    }
+
+    public void TriggerMobileJump()
+    {
+        m_MobileJumpTriggered = true;
+        m_MobileJumpBufferTime = Time.time + 0.3f;
+    }
+
+    public void ToggleMobileRun() => m_MobileRunActive = !m_MobileRunActive;
+    public void SetMobileRun(bool active) => m_MobileRunActive = active;
+
+    public void PlaceBlock()
+    {
+        var placer = GetComponent<VoxelPlacer>();
+        if (placer != null)
+        {
+            placer.PlaceBlock();
+        }
+    }
+
+    public void MineBlock()
+    {
+        var placer = GetComponent<VoxelPlacer>();
+        if (placer != null)
+        {
+            placer.MineBlock();
+        }
     }
 
     #endregion

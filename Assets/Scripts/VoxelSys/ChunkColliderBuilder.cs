@@ -16,7 +16,7 @@ public class ChunkColliderBuilder : Singleton<ChunkColliderBuilder>
     }
 
     List<MeshNode> meshes = new List<MeshNode>();
-    NativeArray<int> meshIds;
+    NativeArray<EntityId> meshIds;
     JobHandle jobHandle;
 
     public void Enqueue(Chunk chunk, Mesh mesh)
@@ -56,11 +56,11 @@ public class ChunkColliderBuilder : Singleton<ChunkColliderBuilder>
                 continue;
             }
 
-            meshIds = new NativeArray<int>(meshes.Count, Allocator.TempJob);
+            meshIds = new NativeArray<EntityId>(meshes.Count, Allocator.TempJob);
 
             for (int i = 0; i < meshes.Count; ++i)
             {
-                meshIds[i] = meshes[i].mesh.GetInstanceID();
+                meshIds[i] = meshes[i].mesh.GetEntityId();
             }
 
             BakeJob bakeJob = new BakeJob { meshIds = meshIds };
@@ -90,7 +90,7 @@ public class ChunkColliderBuilder : Singleton<ChunkColliderBuilder>
     [BurstCompile]
     public struct BakeJob : IJobParallelFor
     {
-        public NativeArray<int> meshIds;
+        public NativeArray<EntityId> meshIds;
 
         public void Execute(int index)
         {
