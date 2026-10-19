@@ -1,0 +1,24 @@
+name: Get Unity License (run once only)
+
+on:
+  workflow_dispatch:   # run manually from GitHub Actions tab
+
+jobs:
+  get-license:
+    name: Get UNITY_LICENSE string
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Request Unity license file
+        uses: game-ci/unity-request-activation-file@v2
+        id: request
+        with:
+          unityVersion: 6000.6.4f1
+
+      - name: Upload .alf file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity_v6000.x.alf
+          path: ${{ steps.request.outputs.filePath }}
+          retention-days: 1
