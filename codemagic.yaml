@@ -1,0 +1,179 @@
+workflows:
+
+  # ─────────────────────────────────────────────────────────────
+  #  ANDROID — Google Play Bundle (AAB)
+  # ─────────────────────────────────────────────────────────────
+  android-release:
+    name: Android Release (AAB)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+
+    environment:
+      groups:
+        - unity_credentials      # UNITY_SERIAL, UNITY_EMAIL, UNITY_PASSWORD
+        - android_signing        # CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
+        - google_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      vars:
+        UNITY_VERSION: "6000.6.4f1"
+        UNITY_VERSION_CHANGESET: "12bfff696524"
+        PACKAGE_NAME: "com.GridBoxCraft.CraftGridBox"
+        BUILD_TARGET: Android
+        BUILD_OUTPUT_DIR: build/Android
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+      - name: Activate Unity license
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -serial "$UNITY_SERIAL" \
+            -username "$UNITY_EMAIL" \
+            -password "$UNITY_PASSWORD"
+
+      - name: Set up Android keystore
+        script: |
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/user.keystore"
+
+      - name: Build Android AAB
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -projectPath "$CM_BUILD_DIR" \
+            -buildTarget "$BUILD_TARGET" \
+            -executeMethod BuildScript.BuildAndroidAAB \
+            -keystoreName "$CM_BUILD_DIR/user.keystore" \
+            -keystorePass "$CM_KEYSTORE_PASSWORD" \
+            -keyaliasName "$CM_KEY_ALIAS" \
+            -keyaliasPass "$CM_KEY_PASSWORD"
+
+      - name: Return Unity license
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -returnlicense
+        ignore_failure: true
+
+    artifacts:
+      - $BUILD_OUTPUT_DIR/**/*.aab
+      - $BUILD_OUTPUT_DIR/**/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - $CM_SUBMITTER_EMAIL
+        notify:
+          success: true
+          failure: true
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: true
+
+  # ─────────────────────────────────────────────────────────────
+  #  iOS — App Store IPA
+  # ─────────────────────────────────────────────────────────────
+  ios-release:
+    name: iOS Release (IPA)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      groups:
+        - unity_credentials      # UNITY_SERIAL, UNITY_EMAIL, UNITY_PASSWORD
+        - ios_signing            # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
+                                 # APP_STORE_CONNECT_PRIVATE_KEY, CERTIFICATE_PRIVATE_KEY
+      vars:
+        UNITY_VERSION: "6000.6.4f1"
+        UNITY_VERSION_CHANGESET: "12bfff696524"
+        BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
+        XCODE_WORKSPACE: ios/Unity-iPhone.xcworkspace
+        XCODE_SCHEME: Unity-iPhone
+        BUILD_TARGET: iOS
+        XCODE_OUTPUT_DIR: build/iOS
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    integrations:
+      app_store_connect: codemagic_api_key
+
+    scripts:
+      - name: Activate Unity license
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -serial "$UNITY_SERIAL" \
+            -username "$UNITY_EMAIL" \
+            -password "$UNITY_PASSWORD"
+
+      - name: Build Xcode project from Unity
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -projectPath "$CM_BUILD_DIR" \
+            -buildTarget "$BUILD_TARGET" \
+            -executeMethod BuildScript.BuildIOS \
+            -customBuildPath "$XCODE_OUTPUT_DIR"
+
+      - name: Fetch code signing profiles
+        script: |
+          xcode-project use-profiles
+
+      - name: Install CocoaPods dependencies
+        script: |
+          find "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR" -name "Podfile" -execdir pod install \;
+        ignore_failure: true
+
+      - name: Build & archive IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR/$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+      - name: Return Unity license
+        script: |
+          unity-editor \
+            -batchmode \
+            -quit \
+            -logFile /dev/stdout \
+            -returnlicense
+        ignore_failure: true
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+
+    publishing:
+      email:
+        recipients:
+          - $CM_SUBMITTER_EMAIL
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+        submit_to_app_store: false
