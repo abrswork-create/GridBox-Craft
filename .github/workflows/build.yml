@@ -1,0 +1,170 @@
+name: Build CraftGridBox
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # allows manual trigger from GitHub UI
+
+jobs:
+
+  # ── Step 1: Request & store Unity Personal license ────────────────────────
+  # Only needs to run ONCE. After that, store UNITY_LICENSE secret and skip.
+  # See: https://game.ci/docs/github/activation
+  activate:
+    name: Activate Unity License
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: game-ci/unity-activate@v2
+        id: activation
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:   ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+  # ── Step 2: Build Android AAB ──────────────────────────────────────────────
+  build-android:
+    name: Build Android (AAB)
+    runs-on: ubuntu-latest
+    needs: []        # remove 'activate' dependency after first run
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-Android-
+            Library-
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > user.keystore
+
+      - name: Build Android AAB
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform:        Android
+          buildName:             CraftGridBox
+          androidExportType:     androidAppBundle    # produces .aab
+          androidKeystoreName:   user.keystore
+          androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          androidKeyaliasName:   ${{ secrets.ANDROID_KEY_ALIAS }}
+          androidKeyaliasPass:   ${{ secrets.ANDROID_KEY_PASS }}
+          unityVersion:          6000.6.4f1
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftGridBox-Android
+          path: build/Android/**/*.aab
+          retention-days: 14
+
+  # ── Step 3: Build iOS Xcode project ───────────────────────────────────────
+  build-ios:
+    name: Build iOS (Xcode project)
+    runs-on: macos-latest
+    needs: []
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-iOS-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-iOS-
+            Library-
+
+      - name: Build iOS Xcode project
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: iOS
+          buildName:      CraftGridBox
+          unityVersion:   6000.6.4f1
+
+      - name: Install CocoaPods
+        run: |
+          cd build/iOS/CraftGridBox
+          pod install --repo-update || true
+
+      - name: Archive IPA
+        uses: yukiarrr/ios-build-action@v1.5.0
+        with:
+          project-path:         build/iOS/CraftGridBox/Unity-iPhone.xcworkspace
+          scheme:               Unity-iPhone
+          export-method:        app-store
+          team-id:              ${{ secrets.APPLE_TEAM_ID }}
+          certificate-base64:   ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          certificate-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          mobileprovision-base64: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          output-path:          CraftGridBox.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftGridBox-iOS
+          path: CraftGridBox.ipa
+          retention-days: 14
+
+  # ── Step 4: Upload to Google Play (internal track) ─────────────────────────
+  deploy-android:
+    name: Deploy to Google Play
+    runs-on: ubuntu-latest
+    needs: build-android
+
+    steps:
+      - name: Download AAB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CraftGridBox-Android
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName:    com.GridBoxCraft.CraftGridBox
+          releaseFiles:   "**/*.aab"
+          track:          internal
+          status:         draft
+
+  # ── Step 5: Upload to TestFlight ───────────────────────────────────────────
+  deploy-ios:
+    name: Deploy to TestFlight
+    runs-on: macos-latest
+    needs: build-ios
+
+    steps:
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CraftGridBox-iOS
+
+      - name: Upload to TestFlight
+        uses: Apple-Actions/upload-testflight-build@v1
+        with:
+          app-path:   CraftGridBox.ipa
+          issuer-id:  ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
