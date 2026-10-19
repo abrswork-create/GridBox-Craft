@@ -10,7 +10,7 @@ workflows:
 
     environment:
       groups:
-        - unity_credentials      # UNITY_SERIAL, UNITY_EMAIL, UNITY_PASSWORD
+        - unity_credentials      # UNITY_LICENSE (base64 of your .ulf file)
         - android_signing        # CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
         - google_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
       vars:
@@ -28,15 +28,14 @@ workflows:
           include: true
 
     scripts:
-      - name: Activate Unity license
+      - name: Activate Unity Personal license
         script: |
+          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_v6000.x.ulf
           unity-editor \
             -batchmode \
             -quit \
             -logFile /dev/stdout \
-            -serial "$UNITY_SERIAL" \
-            -username "$UNITY_EMAIL" \
-            -password "$UNITY_PASSWORD"
+            -manualLicenseFile /tmp/Unity_v6000.x.ulf
 
       - name: Set up Android keystore
         script: |
@@ -56,14 +55,7 @@ workflows:
             -keyaliasName "$CM_KEY_ALIAS" \
             -keyaliasPass "$CM_KEY_PASSWORD"
 
-      - name: Return Unity license
-        script: |
-          unity-editor \
-            -batchmode \
-            -quit \
-            -logFile /dev/stdout \
-            -returnlicense
-        ignore_failure: true
+      # Personal license does not need to be returned
 
     artifacts:
       - $BUILD_OUTPUT_DIR/**/*.aab
@@ -91,7 +83,7 @@ workflows:
 
     environment:
       groups:
-        - unity_credentials      # UNITY_SERIAL, UNITY_EMAIL, UNITY_PASSWORD
+        - unity_credentials      # UNITY_LICENSE (base64 of your .ulf file)
         - ios_signing            # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
                                  # APP_STORE_CONNECT_PRIVATE_KEY, CERTIFICATE_PRIVATE_KEY
       vars:
@@ -114,15 +106,14 @@ workflows:
       app_store_connect: codemagic_api_key
 
     scripts:
-      - name: Activate Unity license
+      - name: Activate Unity Personal license
         script: |
+          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_v6000.x.ulf
           unity-editor \
             -batchmode \
             -quit \
             -logFile /dev/stdout \
-            -serial "$UNITY_SERIAL" \
-            -username "$UNITY_EMAIL" \
-            -password "$UNITY_PASSWORD"
+            -manualLicenseFile /tmp/Unity_v6000.x.ulf
 
       - name: Build Xcode project from Unity
         script: |
@@ -150,14 +141,7 @@ workflows:
             --workspace "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR/$XCODE_WORKSPACE" \
             --scheme "$XCODE_SCHEME"
 
-      - name: Return Unity license
-        script: |
-          unity-editor \
-            -batchmode \
-            -quit \
-            -logFile /dev/stdout \
-            -returnlicense
-        ignore_failure: true
+      # Personal license does not need to be returned
 
     artifacts:
       - build/ios/ipa/*.ipa
