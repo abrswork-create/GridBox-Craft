@@ -1,99 +1,25 @@
 workflows:
 
   # ─────────────────────────────────────────────────────────────
-  #  ANDROID — Google Play Bundle (AAB)
-  # ─────────────────────────────────────────────────────────────
-  android-release:
-    name: Android Release (AAB)
-    max_build_duration: 90
-    instance_type: mac_mini_m2
-
-    environment:
-      groups:
-        - unity_credentials      # UNITY_LICENSE (base64 of your .ulf file)
-        - android_signing        # CM_KEYSTORE (base64), CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD
-        - google_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-      vars:
-        UNITY_VERSION: "6000.6.4f1"
-        UNITY_VERSION_CHANGESET: "12bfff696524"
-        PACKAGE_NAME: "com.GridBoxCraft.CraftGridBox"
-        BUILD_TARGET: Android
-        BUILD_OUTPUT_DIR: build/Android
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-
-    scripts:
-      - name: Activate Unity Personal license
-        script: |
-          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_v6000.x.ulf
-          unity-editor \
-            -batchmode \
-            -quit \
-            -logFile /dev/stdout \
-            -manualLicenseFile /tmp/Unity_v6000.x.ulf
-
-      - name: Set up Android keystore
-        script: |
-          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/user.keystore"
-
-      - name: Build Android AAB
-        script: |
-          unity-editor \
-            -batchmode \
-            -quit \
-            -logFile /dev/stdout \
-            -projectPath "$CM_BUILD_DIR" \
-            -buildTarget "$BUILD_TARGET" \
-            -executeMethod BuildScript.BuildAndroidAAB \
-            -keystoreName "$CM_BUILD_DIR/user.keystore" \
-            -keystorePass "$CM_KEYSTORE_PASSWORD" \
-            -keyaliasName "$CM_KEY_ALIAS" \
-            -keyaliasPass "$CM_KEY_PASSWORD"
-
-      # Personal license does not need to be returned
-
-    artifacts:
-      - $BUILD_OUTPUT_DIR/**/*.aab
-      - $BUILD_OUTPUT_DIR/**/*.apk
-
-    publishing:
-      email:
-        recipients:
-          - $CM_SUBMITTER_EMAIL
-        notify:
-          success: true
-          failure: true
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
-
-  # ─────────────────────────────────────────────────────────────
-  #  iOS — App Store IPA
+  #  iOS — App Store (IPA via TestFlight)
   # ─────────────────────────────────────────────────────────────
   ios-release:
-    name: iOS Release (IPA)
+    name: iOS App Store Release
     max_build_duration: 120
     instance_type: mac_mini_m2
 
     environment:
       groups:
-        - unity_credentials      # UNITY_LICENSE (base64 of your .ulf file)
-        - ios_signing            # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
-                                 # APP_STORE_CONNECT_PRIVATE_KEY, CERTIFICATE_PRIVATE_KEY
+        - unity_credentials   # UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD
+        - ios_signing         # APP_STORE_CONNECT_KEY_IDENTIFIER,
+                              # APP_STORE_CONNECT_ISSUER_ID,
+                              # APP_STORE_CONNECT_PRIVATE_KEY,
+                              # CERTIFICATE_PRIVATE_KEY
       vars:
-        UNITY_VERSION: "6000.6.4f1"
-        UNITY_VERSION_CHANGESET: "12bfff696524"
-        BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
-        XCODE_WORKSPACE: ios/Unity-iPhone.xcworkspace
-        XCODE_SCHEME: Unity-iPhone
-        BUILD_TARGET: iOS
-        XCODE_OUTPUT_DIR: build/iOS
+        UNITY_VERSION:    "6000.6.4f1"
+        BUNDLE_ID:        "com.GridBoxCraft.CraftGridBox"
+        XCODE_SCHEME:     "Unity-iPhone"
+        XCODE_OUTPUT_DIR: "build/iOS"
 
     triggering:
       events:
@@ -122,7 +48,7 @@ workflows:
             -quit \
             -logFile /dev/stdout \
             -projectPath "$CM_BUILD_DIR" \
-            -buildTarget "$BUILD_TARGET" \
+            -buildTarget iOS \
             -executeMethod BuildScript.BuildIOS \
             -customBuildPath "$XCODE_OUTPUT_DIR"
 
@@ -130,7 +56,7 @@ workflows:
         script: |
           xcode-project use-profiles
 
-      - name: Install CocoaPods dependencies
+      - name: Install CocoaPods
         script: |
           find "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR" -name "Podfile" -execdir pod install \;
         ignore_failure: true
@@ -138,15 +64,12 @@ workflows:
       - name: Build & archive IPA
         script: |
           xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR/$XCODE_WORKSPACE" \
+            --workspace "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR/Unity-iPhone.xcworkspace" \
             --scheme "$XCODE_SCHEME"
-
-      # Personal license does not need to be returned
 
     artifacts:
       - build/ios/ipa/*.ipa
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
 
     publishing:
       email:
@@ -160,4 +83,4 @@ workflows:
         submit_to_testflight: true
         beta_groups:
           - Internal Testers
-        submit_to_app_store: false
+        submit_to_app_store: false   # change to true for direct App Store release
