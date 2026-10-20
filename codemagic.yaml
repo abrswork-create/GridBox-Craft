@@ -1,18 +1,17 @@
-workflows:
 
-  # ─────────────────────────────────────────────────────────────
-  #  iOS — Build Xcode project from Unity
-  # ─────────────────────────────────────────────────────────────
+workflows:
   ios-release:
     name: iOS Build
     max_build_duration: 120
     instance_type: mac_mini_m2
 
     environment:
+      groups:
+        - unity_credentials
       vars:
-        UNITY_VERSION:    "6000.6.4f1"
-        BUNDLE_ID:        "com.GridBoxCraft.CraftGridBox"
-        XCODE_SCHEME:     "Unity-iPhone"
+        UNITY_VERSION: "6000.6.4f1"
+        BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
+        XCODE_SCHEME: "Unity-iPhone"
         XCODE_OUTPUT_DIR: "build/iOS"
 
     triggering:
@@ -25,7 +24,13 @@ workflows:
     scripts:
       - name: Activate Unity Personal license
         script: |
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "Error: UNITY_LICENSE is not configured."
+            exit 1
+          fi
+
           echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_v6000.x.ulf
+
           unity-editor \
             -batchmode \
             -quit \
@@ -45,18 +50,3 @@ workflows:
 
     artifacts:
       - build/iOS/**
-
-    # ── App Store Connect publishing (uncomment when ready) ──
-    # To enable, go to Codemagic → Settings → Integrations →
-    # Add App Store Connect API Key, then uncomment below:
-    #
-    # integrations:
-    #   app_store_connect: <your_key_name>
-    #
-    # publishing:
-    #   app_store_connect:
-    #     auth: integration
-    #     submit_to_testflight: true
-    #     beta_groups:
-    #       - Internal Testers
-    #     submit_to_app_store: false
