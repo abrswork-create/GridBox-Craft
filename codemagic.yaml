@@ -1,4 +1,3 @@
-
 workflows:
   ios-release:
     name: iOS Build
@@ -10,6 +9,7 @@ workflows:
         - unity_credentials
       vars:
         UNITY_VERSION: "6000.6.4f1"
+        UNITY_CHANGESET: "12bfff696524"
         BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
         XCODE_SCHEME: "Unity-iPhone"
         XCODE_OUTPUT_DIR: "build/iOS"
@@ -22,24 +22,56 @@ workflows:
           include: true
 
     scripts:
-      - name: Activate Unity Personal license
+      - name: Locate or Install Unity Editor
         script: |
-          if [ -z "$UNITY_LICENSE" ]; then
-            echo "Error: UNITY_LICENSE is not configured."
+          echo "=== Locating Unity Editor ==="
+          
+          # 1. Check exact version path
+          EXACT_PATH="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
+          if [ -f "$EXACT_PATH" ]; then
+            UNITY_BIN="$EXACT_PATH"
+          else
+            # 2. Check any pre-installed Unity
+            UNITY_BIN=$(find /Applications/Unity -name "Unity" -path "*/Contents/MacOS/Unity" 2>/dev/null | head -n 1)
+          fi
+
+          # 3. If not found, install via Unity Hub
+          if [ -z "$UNITY_BIN" ]; then
+            echo "Unity not found. Installing Unity $UNITY_VERSION..."
+            /Applications/Unity\ Hub.app/Contents/MacOS/Unity\ Hub -- --headless install \
+              --version "$UNITY_VERSION" \
+              --changeset "$UNITY_CHANGESET" \
+              -m ios || true
+            
+            UNITY_BIN=$(find /Applications/Unity -name "Unity" -path "*/Contents/MacOS/Unity" 2>/dev/null | head -n 1)
+          fi
+
+          if [ -z "$UNITY_BIN" ]; then
+            echo "Error: Unity Editor could not be found or installed."
             exit 1
           fi
 
-          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_v6000.x.ulf
+          echo "Using Unity binary: $UNITY_BIN"
+          echo "UNITY_BIN=$UNITY_BIN" >> $CM_ENV
 
-          unity-editor \
+      - name: Activate Unity Personal license
+        script: |
+          if [ -z "$UNITY_LICENSE" ]; then
+            echo "Error: UNITY_LICENSE is not configured in Codemagic environment variables."
+            exit 1
+          fi
+
+          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_lic.ulf
+
+          "$UNITY_BIN" \
             -batchmode \
             -quit \
             -logFile /dev/stdout \
-            -manualLicenseFile /tmp/Unity_v6000.x.ulf
+            -manualLicenseFile /tmp/Unity_lic.ulf
 
       - name: Build Xcode project from Unity
         script: |
-          unity-editor \
+          "$UNITY_BIN" \
             -batchmode \
             -quit \
             -logFile /dev/stdout \
