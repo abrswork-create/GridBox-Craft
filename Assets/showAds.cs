@@ -37,4 +37,13 @@ public class showAds : MonoBehaviour
     {
         AdsManager.LoadScene(sceneName);
     }
+
+    /// <summary>
+    /// Opens the Google UMP Privacy Options Form (for GDPR consent modification).
+    /// Can be linked directly to an in-game "Privacy Settings" button.
+    /// </summary>
+    public void ShowPrivacyOptions()
+    {
+        AdsManager.ShowPrivacyOptions();
+    }
 }

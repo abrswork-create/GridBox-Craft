@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using GoogleMobileAds.Api;
+using GoogleMobileAds.Ump.Api;
 
 public class AdsManager : MonoBehaviour
 {
@@ -31,6 +32,12 @@ public class AdsManager : MonoBehaviour
     }
 
 #pragma warning disable 0414
+    [Header("UMP Privacy & Consent (GDPR / CCPA)")]
+    [Tooltip("If enabled, shows the Google UMP consent form (GDPR/EU regulations) before loading ads on Android and iOS.")]
+    [SerializeField] private bool enableUmp = true;
+    [Tooltip("Enable for testing UMP consent popup in Editor (simulates an EEA user). Disable before release.")]
+    [SerializeField] private bool testModeEEA = false;
+
     [Header("Banner Ad Settings")]
     [SerializeField] private bool showBannerOnStart = true;
     [SerializeField] private AdPosition bannerPosition = AdPosition.Top;
@@ -51,6 +58,10 @@ public class AdsManager : MonoBehaviour
     [Tooltip("Event triggered when the player finishes watching a rewarded ad")]
     public UnityEvent onRewardEarned;
 #pragma warning restore 0414
+
+    // Initialization and Consent States
+    private bool _isMobileAdsInitialized = false;
+    private bool _isUmpCompleted = false;
 
     // Internal Ad Objects
     private BannerView _bannerView;
@@ -107,12 +118,6 @@ public class AdsManager : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
-    private void Start()
-    {
-        _isBannerVisible = showBannerOnStart;
-        InitializeAds();
-    }
-
     private void OnEnable()
     {
         SceneManager.sceneLoaded += OnSceneLoaded;
@@ -154,18 +159,105 @@ public class AdsManager : MonoBehaviour
         }
     }
 
-    private void InitializeAds()
+    private void Start()
     {
+        _isBannerVisible = showBannerOnStart;
+
+        if (enableUmp)
+        {
+            RequestConsentAndInitialize();
+        }
+        else
+        {
+            InitializeGoogleMobileAds();
+        }
+    }
+
+    /// <summary>
+    /// Requests UMP consent information (GDPR/EU regulations) and shows the form if required.
+    /// Once consent is resolved, initializes Google Mobile Ads SDK.
+    /// </summary>
+    public void RequestConsentAndInitialize()
+    {
+        Debug.Log("[AdsManager] Requesting UMP Consent information...");
+
+        var requestParameters = new ConsentRequestParameters
+        {
+            TagForUnderAgeOfConsent = false
+        };
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (testModeEEA)
+        {
+            requestParameters.ConsentDebugSettings = new ConsentDebugSettings
+            {
+                DebugGeography = DebugGeography.EEA
+            };
+        }
+#endif
+
+        ConsentInformation.Update(requestParameters, (FormError updateError) =>
+        {
+            RunOnMainThread(() =>
+            {
+                if (updateError != null)
+                {
+                    Debug.LogError($"[AdsManager] UMP Consent update failed: {updateError.Message}");
+                    OnConsentComplete();
+                    return;
+                }
+
+                // Determines if a consent form is required and shows it if necessary
+                ConsentForm.LoadAndShowConsentFormIfRequired((FormError formError) =>
+                {
+                    RunOnMainThread(() =>
+                    {
+                        if (formError != null)
+                        {
+                            Debug.LogWarning($"[AdsManager] UMP Consent form completed with notice/error: {formError.Message}");
+                        }
+                        else
+                        {
+                            Debug.Log("[AdsManager] UMP Consent form completed successfully.");
+                        }
+
+                        OnConsentComplete();
+                    });
+                });
+            });
+        });
+    }
+
+    private void OnConsentComplete()
+    {
+        _isUmpCompleted = true;
+
+        if (ConsentInformation.CanRequestAds())
+        {
+            Debug.Log("[AdsManager] Consent verified. Initializing Google Mobile Ads SDK...");
+            InitializeGoogleMobileAds();
+        }
+        else
+        {
+            Debug.LogWarning("[AdsManager] Consent not obtained; ads cannot be requested under current policy.");
+        }
+    }
+
+    private void InitializeGoogleMobileAds()
+    {
+        if (_isMobileAdsInitialized) return;
+
         Debug.Log("[AdsManager] Initializing Google Mobile Ads SDK...");
         MobileAds.Initialize(initStatus =>
         {
             RunOnMainThread(() =>
             {
+                _isMobileAdsInitialized = true;
                 Debug.Log("[AdsManager] Google Mobile Ads SDK initialized.");
                 LoadInterstitialAd();
                 LoadRewardedAd();
 
-                if (showBannerOnStart)
+                if (_isBannerVisible)
                 {
                     BannerShow();
                 }
@@ -259,6 +351,12 @@ public class AdsManager : MonoBehaviour
     public void BannerShow()
     {
         _isBannerVisible = true;
+        if (!_isMobileAdsInitialized)
+        {
+            Debug.Log("[AdsManager] BannerShow requested; waiting for UMP / MobileAds initialization...");
+            return;
+        }
+
         if (_bannerView != null)
         {
             _bannerView.Show();
@@ -373,12 +471,54 @@ public class AdsManager : MonoBehaviour
     /// Example: AdsManager.LoadScene("MainMenu");
     /// </summary>
     public static void LoadScene(string sceneName) => Instance.LoadSceneWithAd(sceneName);
+
+    /// <summary>
+    /// Shows the privacy options form (required by Google for EEA users to change consent at any time).
+    /// </summary>
+    public static void ShowPrivacyOptions(Action onClosed = null) => Instance.ShowPrivacyOptionsForm(onClosed);
+
+    /// <summary>
+    /// Shows the privacy options form (call from UI button in Settings).
+    /// </summary>
+    public void ShowPrivacyOptionsForm(Action onClosed = null)
+    {
+        Debug.Log("[AdsManager] Showing Privacy Options Form...");
+        ConsentForm.ShowPrivacyOptionsForm((FormError error) =>
+        {
+            RunOnMainThread(() =>
+            {
+                if (error != null)
+                {
+                    Debug.LogError($"[AdsManager] Error showing privacy options form: {error.Message}");
+                }
+                else
+                {
+                    Debug.Log("[AdsManager] Privacy options form closed.");
+                }
+
+                if (ConsentInformation.CanRequestAds() && !_isMobileAdsInitialized)
+                {
+                    InitializeGoogleMobileAds();
+                }
+
+                onClosed?.Invoke();
+            });
+        });
+    }
+
+    /// <summary>
+    /// Checks if privacy options button should be visible (EEA / required regions).
+    /// </summary>
+    public static bool IsPrivacyOptionsRequired()
+    {
+        return ConsentInformation.PrivacyOptionsRequirementStatus == PrivacyOptionsRequirementStatus.Required;
+    }
     #endregion
 
     #region Interstitial Ad Core Logic
     internal void LoadInterstitialAd()
     {
-        if (_isInterstitialLoading) return;
+        if (!_isMobileAdsInitialized || _isInterstitialLoading) return;
 
         if (_interstitialAd != null)
         {
@@ -480,7 +620,7 @@ public class AdsManager : MonoBehaviour
     #region Rewarded Ad Core Logic
     internal void LoadRewardedAd()
     {
-        if (_isRewardedLoading) return;
+        if (!_isMobileAdsInitialized || _isRewardedLoading) return;
 
         if (_rewardedAd != null)
         {
@@ -599,7 +739,7 @@ public class AdsManager : MonoBehaviour
     #region Banner Ad Core Logic
     internal void LoadBannerAd()
     {
-        if (_isBannerLoading) return;
+        if (!_isMobileAdsInitialized || _isBannerLoading) return;
 
         if (_bannerView != null)
         {

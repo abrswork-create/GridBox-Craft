@@ -18,7 +18,8 @@ public class AdButton : MonoBehaviour
         BannerShow,         // Automatically shows banner ad when button is clicked
         BannerHide,         // Automatically hides banner ad when button is clicked
         BannerToggle,       // Automatically toggles banner ad when button is clicked
-        LoadSceneWithAd     // Automatically triggers Interstitial ad, then loads targetScene
+        LoadSceneWithAd,    // Automatically triggers Interstitial ad, then loads targetScene
+        PrivacyOptions      // Automatically opens UMP Privacy Options (GDPR consent form)
     }
 
     [Header("Automatic Button Hookup (Optional)")]
@@ -74,6 +75,9 @@ public class AdButton : MonoBehaviour
                 break;
             case AdActionType.LoadSceneWithAd:
                 LoadTargetSceneWithAd();
+                break;
+            case AdActionType.PrivacyOptions:
+                ShowPrivacyOptions();
                 break;
         }
     }
@@ -163,6 +167,17 @@ public class AdButton : MonoBehaviour
         if (AdsManager.Instance != null)
         {
             AdsManager.Instance.BannerToggle();
+        }
+    }
+
+    /// <summary>
+    /// Displays the Google UMP Privacy Options form. Hook this up to a "Privacy Settings" button.
+    /// </summary>
+    public void ShowPrivacyOptions()
+    {
+        if (AdsManager.Instance != null)
+        {
+            AdsManager.Instance.ShowPrivacyOptionsForm();
         }
     }
     #endregion
