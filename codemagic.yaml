@@ -6,8 +6,6 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      groups:
-        - unity_credentials
       vars:
         UNITY_VERSION: "6000.6.4f1"
         BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
