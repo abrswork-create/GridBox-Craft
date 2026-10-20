@@ -1,18 +1,18 @@
 workflows:
-  ios-release:
-    name: iOS Build
+  ios-app-store:
+    name: iOS App Store Release
     max_build_duration: 120
     instance_type: mac_mini_m2
 
     environment:
       groups:
-        - unity_credentials
+        - app_store_credentials # APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_PRIVATE_KEY
+        - unity_credentials     # UNITY_LICENSE (or UNITY_SERIAL, UNITY_USERNAME, UNITY_PASSWORD)
       vars:
-        UNITY_VERSION: "6000.6.4f1"
-        UNITY_CHANGESET: "12bfff696524"
         BUNDLE_ID: "com.GridBoxCraft.CraftGridBox"
+        XCODE_PROJECT: "build/iOS"
         XCODE_SCHEME: "Unity-iPhone"
-        XCODE_OUTPUT_DIR: "build/iOS"
+      xcode: latest
 
     triggering:
       events:
@@ -22,55 +22,26 @@ workflows:
           include: true
 
     scripts:
-      - name: Locate or Install Unity Editor
-        script: |
-          echo "=== Locating Unity Editor ==="
-          
-          # 1. Check exact version path
-          EXACT_PATH="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
-          if [ -f "$EXACT_PATH" ]; then
-            UNITY_BIN="$EXACT_PATH"
-          else
-            # 2. Check any pre-installed Unity
-            UNITY_BIN=$(find /Applications/Unity -name "Unity" -path "*/Contents/MacOS/Unity" 2>/dev/null | head -n 1)
-          fi
-
-          # 3. If not found, install via Unity Hub
-          if [ -z "$UNITY_BIN" ]; then
-            echo "Unity not found. Installing Unity $UNITY_VERSION..."
-            /Applications/Unity\ Hub.app/Contents/MacOS/Unity\ Hub -- --headless install \
-              --version "$UNITY_VERSION" \
-              --changeset "$UNITY_CHANGESET" \
-              -m ios || true
-            
-            UNITY_BIN=$(find /Applications/Unity -name "Unity" -path "*/Contents/MacOS/Unity" 2>/dev/null | head -n 1)
-          fi
-
-          if [ -z "$UNITY_BIN" ]; then
-            echo "Error: Unity Editor could not be found or installed."
-            exit 1
-          fi
-
-          echo "Using Unity binary: $UNITY_BIN"
-          echo "UNITY_BIN=$UNITY_BIN" >> $CM_ENV
-
-      - name: Activate Unity Personal license
-        script: |
-          if [ -z "$UNITY_LICENSE" ]; then
-            echo "Error: UNITY_LICENSE is not configured in Codemagic environment variables."
-            exit 1
-          fi
-
-          echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_lic.ulf
-
-          "$UNITY_BIN" \
-            -batchmode \
-            -quit \
-            -logFile /dev/stdout \
-            -manualLicenseFile /tmp/Unity_lic.ulf
-
       - name: Build Xcode project from Unity
         script: |
+          echo "=== 1. Locating Unity Editor ==="
+          UNITY_BIN=$(find /Applications/Unity -name "Unity" -path "*/Contents/MacOS/Unity" 2>/dev/null | head -n 1)
+          if [ -z "$UNITY_BIN" ]; then
+            UNITY_BIN="/Applications/Unity/Hub/Editor/6000.6.4f1/Unity.app/Contents/MacOS/Unity"
+          fi
+          echo "Unity path: $UNITY_BIN"
+
+          # Activate license if credentials are provided
+          if [ -n "$UNITY_SERIAL" ]; then
+            "$UNITY_BIN" -batchmode -quit -logFile /dev/stdout \
+              -serial "$UNITY_SERIAL" -username "$UNITY_USERNAME" -password "$UNITY_PASSWORD" || true
+          elif [ -n "$UNITY_LICENSE" ]; then
+            echo "$UNITY_LICENSE" | base64 --decode > /tmp/Unity_lic.ulf
+            "$UNITY_BIN" -batchmode -quit -logFile /dev/stdout \
+              -manualLicenseFile /tmp/Unity_lic.ulf || true
+          fi
+
+          echo "=== 2. Exporting iOS Xcode Project ==="
           "$UNITY_BIN" \
             -batchmode \
             -quit \
@@ -78,7 +49,43 @@ workflows:
             -projectPath "$CM_BUILD_DIR" \
             -buildTarget iOS \
             -executeMethod BuildScript.BuildIOS \
-            -customBuildPath "$XCODE_OUTPUT_DIR"
+            -customBuildPath "$XCODE_PROJECT"
+
+      - name: Install CocoaPods dependencies
+        script: |
+          if [ -f "$CM_BUILD_DIR/$XCODE_PROJECT/Podfile" ]; then
+            echo "Installing CocoaPods..."
+            cd "$CM_BUILD_DIR/$XCODE_PROJECT"
+            pod install --repo-update
+          fi
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create || true
+          keychain add-certificates || true
+          xcode-project use-profiles || true
+
+      - name: Build IPA
+        script: |
+          WORKSPACE="$CM_BUILD_DIR/$XCODE_PROJECT/Unity-iPhone.xcworkspace"
+          PROJECT="$CM_BUILD_DIR/$XCODE_PROJECT/Unity-iPhone.xcodeproj"
+
+          if [ -d "$WORKSPACE" ]; then
+            xcode-project build-ipa --workspace "$WORKSPACE" --scheme "$XCODE_SCHEME"
+          else
+            xcode-project build-ipa --project "$PROJECT" --scheme "$XCODE_SCHEME"
+          fi
 
     artifacts:
-      - build/iOS/**
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+        submit_to_app_store: false
