@@ -1,20 +1,16 @@
 workflows:
 
   # ─────────────────────────────────────────────────────────────
-  #  iOS — App Store (IPA via TestFlight)
+  #  iOS — Build Xcode project from Unity
   # ─────────────────────────────────────────────────────────────
   ios-release:
-    name: iOS App Store Release
+    name: iOS Build
     max_build_duration: 120
     instance_type: mac_mini_m2
 
     environment:
       groups:
-        - unity_credentials   # UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD
-        - ios_signing         # APP_STORE_CONNECT_KEY_IDENTIFIER,
-                              # APP_STORE_CONNECT_ISSUER_ID,
-                              # APP_STORE_CONNECT_PRIVATE_KEY,
-                              # CERTIFICATE_PRIVATE_KEY
+        - unity_credentials   # UNITY_LICENSE
       vars:
         UNITY_VERSION:    "6000.6.4f1"
         BUNDLE_ID:        "com.GridBoxCraft.CraftGridBox"
@@ -27,9 +23,6 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
-
-    integrations:
-      app_store_connect: codemagic_api_key
 
     scripts:
       - name: Activate Unity Personal license
@@ -52,29 +45,20 @@ workflows:
             -executeMethod BuildScript.BuildIOS \
             -customBuildPath "$XCODE_OUTPUT_DIR"
 
-      - name: Fetch code signing profiles
-        script: |
-          xcode-project use-profiles
-
-      - name: Install CocoaPods
-        script: |
-          find "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR" -name "Podfile" -execdir pod install \;
-        ignore_failure: true
-
-      - name: Build & archive IPA
-        script: |
-          xcode-project build-ipa \
-            --workspace "$CM_BUILD_DIR/$XCODE_OUTPUT_DIR/Unity-iPhone.xcworkspace" \
-            --scheme "$XCODE_SCHEME"
-
     artifacts:
-      - build/ios/ipa/*.ipa
-      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - build/iOS/**
 
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
-        submit_to_app_store: false   # change to true for direct App Store release
+    # ── App Store Connect publishing (uncomment when ready) ──
+    # To enable, go to Codemagic → Settings → Integrations →
+    # Add App Store Connect API Key, then uncomment below:
+    #
+    # integrations:
+    #   app_store_connect: <your_key_name>
+    #
+    # publishing:
+    #   app_store_connect:
+    #     auth: integration
+    #     submit_to_testflight: true
+    #     beta_groups:
+    #       - Internal Testers
+    #     submit_to_app_store: false
